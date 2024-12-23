@@ -90,12 +90,27 @@ function handleRealtimeEvent(event, callbacks) {
     console.log('Processing event:', event.type);
 
     switch (event.type) {
+        case 'conversation.item.created':
+            if (event.item?.content) {
+                const text = extractTextFromContent(event.item.content);
+                if (text) {
+                    callbacks.onTranscript({
+                        text: text,
+                        isPartial: false,
+                        timestamp: new Date().toISOString(),
+                        isUser: event.item.role === 'user'
+                    });
+                }
+            }
+            break;
+
         case 'response.audio_transcript.done':
             if (event.transcript) {
                 callbacks.onTranscript({
                     text: event.transcript,
                     isPartial: false,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    isUser: false
                 });
             }
             break;
@@ -127,6 +142,17 @@ function handleRealtimeEvent(event, callbacks) {
         case 'input_audio_buffer.speech_stopped':
             console.log('Speech stopped');
             break;
+
+        case 'input_audio_buffer.committed':
+            if (event.transcript) {
+                callbacks.onTranscript({
+                    text: event.transcript,
+                    isPartial: false,
+                    timestamp: new Date().toISOString(),
+                    isUser: true
+                });
+            }
+            break;
     }
 }
 
@@ -139,6 +165,9 @@ function extractTextFromContent(content) {
         }
         if (item.type === 'message' && item.content) {
             return extractTextFromContent(item.content);
+        }
+        if (item.type === 'input_audio' && item.transcript) {
+            return item.transcript;
         }
     }
     return null;
