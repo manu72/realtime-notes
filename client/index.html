@@ -4,11 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Realtime Notes</title>
+    <!-- Note the corrected CSS path with leading slash -->
     <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
     <div class="app-container">
-        <header>
+        <header class="app-header">
             <h1>Realtime Notes</h1>
             <div class="controls">
                 <button id="startButton" class="primary-button">Start Recording</button>
@@ -16,30 +17,38 @@
             </div>
         </header>
 
-        <main>
+        <main class="main-content">
+            <!-- Content container with grid layout -->
             <div class="content-container">
+                <!-- Transcription section -->
                 <section class="transcription-section">
                     <h2>Live Transcription</h2>
-                    <div id="liveTranscription" class="transcription-box"></div>
+                    <div id="liveTranscription" class="transcription-box">
+                        <!-- Transcriptions will appear here -->
+                    </div>
                 </section>
 
+                <!-- Summary section -->
                 <section class="summary-section">
                     <h2>Summary</h2>
-                    <div id="summaryContent" class="summary-box"></div>
+                    <div id="summaryContent" class="summary-box">
+                        <!-- Summaries will appear here -->
+                    </div>
                 </section>
             </div>
 
+            <!-- Status bar -->
             <div class="status-bar">
-                <span id="connectionStatus">Disconnected</span>
-                <span id="audioStatus">Microphone: Off</span>
+                <span id="connectionStatus" class="status-text disconnected">Disconnected</span>
+                <span id="audioStatus" class="status-text inactive">Microphone: Off</span>
             </div>
         </main>
     </div>
 
     <!-- Load our JavaScript modules -->
-    <script type="module" src="/js/ui.js"></script>
     <script type="module" src="/js/audio.js"></script>
     <script type="module" src="/js/webrtc.js"></script>
+    <script type="module" src="/js/ui.js"></script>
     <script type="module" src="/js/app.js"></script>
 </body>
 </html>

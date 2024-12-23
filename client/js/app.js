@@ -1,34 +1,65 @@
 // app.js - Main application logic and initialization
+console.log('Initializing application module...');
+
+// Import our utility modules
 import { initUI, updateStatus, updateTranscription, updateSummary } from './ui.js';
 import { initWebRTC, closeConnection } from './webrtc.js';
+import { audioManager } from './audio.js';
 
 class RealtimeNotes {
     constructor() {
+        console.log('Creating RealtimeNotes instance');
         this.isRecording = false;
         this.connection = null;
-        this.initializeApp();
+        this.initialize();
     }
 
-    async initializeApp() {
-        // Initialize UI and attach event listeners
-        initUI({
-            onStart: () => this.startRecording(),
-            onStop: () => this.stopRecording()
-        });
+    async initialize() {
+        try {
+            console.log('Setting up application event handlers...');
+            
+            // Define our UI event handlers
+            const uiHandlers = {
+                onStart: async () => {
+                    console.log('Start recording requested');
+                    try {
+                        await this.startRecording();
+                    } catch (error) {
+                        console.error('Recording start failed:', error);
+                        updateStatus('Failed to start recording');
+                    }
+                },
+                onStop: async () => {
+                    console.log('Stop recording requested');
+                    try {
+                        await this.stopRecording();
+                    } catch (error) {
+                        console.error('Recording stop failed:', error);
+                    }
+                }
+            };
 
-        // Handle page unload to clean up resources
-        window.addEventListener('beforeunload', () => {
-            if (this.connection) {
-                closeConnection();
-            }
-        });
+            // Initialize the UI with our handlers
+            await initUI(uiHandlers);
+            console.log('UI initialization complete');
+
+        } catch (error) {
+            console.error('Application initialization failed:', error);
+            updateStatus('Initialization failed');
+        }
     }
 
     async startRecording() {
+        console.log('Starting recording process...');
+        updateStatus('Connecting...');
+
         try {
-            // Request an ephemeral token from our server
+            // Initialize audio first
+            await audioManager.initializeAudio();
+            
+            // Get session token
             const response = await fetch('/api/sessions', {
-                method: 'POST',
+                method: 'POST'
             });
 
             if (!response.ok) {
@@ -36,8 +67,9 @@ class RealtimeNotes {
             }
 
             const sessionData = await response.json();
-            
-            // Initialize WebRTC connection with the token
+            console.log('Session token acquired');
+
+            // Initialize WebRTC connection
             this.connection = await initWebRTC(sessionData.client_secret.value, {
                 onTranscript: (text) => updateTranscription(text),
                 onSummary: (text) => updateSummary(text),
@@ -48,20 +80,30 @@ class RealtimeNotes {
             updateStatus('Connected');
 
         } catch (error) {
+            this.isRecording = false;
             console.error('Failed to start recording:', error);
-            updateStatus(`Error: ${error.message}`);
+            updateStatus('Connection failed');
+            throw error;
         }
     }
 
     async stopRecording() {
-        if (this.connection) {
+        if (!this.isRecording) return;
+
+        console.log('Stopping recording...');
+        updateStatus('Disconnecting...');
+
+        try {
             await closeConnection();
             this.connection = null;
+            this.isRecording = false;
+            updateStatus('Disconnected');
+        } catch (error) {
+            console.error('Error stopping recording:', error);
+            throw error;
         }
-        this.isRecording = false;
-        updateStatus('Disconnected');
     }
 }
 
-// Initialize the application
-window.app = new RealtimeNotes();
+// Create and export a singleton instance
+export const app = new RealtimeNotes();
