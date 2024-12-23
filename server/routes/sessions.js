@@ -15,20 +15,10 @@ router.post('/sessions', async (req, res, next) => {
     }
 
     // Define the configuration for our Realtime session
+    // This configuration is based on the OpenAI Realtime API requirements
     const sessionConfig = {
-      model: 'gpt-4o-realtime-preview-2024-12-17',  // Latest model version
-      voice: 'alloy',  // Default voice
-      settings: {
-        transcription: {
-          language: 'en',  // Default to English
-          partial_results: true  // Enable streaming transcription results
-        },
-        generation: {
-          max_tokens: 4096,  // Maximum context length
-          temperature: 0.7,  // Moderate creativity in responses
-        },
-        instructions: 'You are a helpful assistant that transcribes and summarizes audio input. Provide real-time transcriptions and periodic summaries of the key points discussed.'
-      }
+      model: 'gpt-4o-realtime-preview-2024-12-17',
+      voice: 'alloy'  // Using alloy voice as default
     };
 
     // Request an ephemeral token from OpenAI
@@ -43,6 +33,7 @@ router.post('/sessions', async (req, res, next) => {
 
     if (!response.ok) {
       const errorData = await response.json();
+      console.error('OpenAI API Error:', errorData);
       throw new Error(errorData.error?.message || 'Failed to create session');
     }
 
@@ -51,6 +42,7 @@ router.post('/sessions', async (req, res, next) => {
     res.json(sessionData);
 
   } catch (error) {
+    console.error('Session creation error:', error);
     // Forward any errors to our error handling middleware
     next(error);
   }
@@ -64,9 +56,7 @@ router.get('/session-config', (req, res) => {
   res.json({
     model: 'gpt-4o-realtime-preview-2024-12-17',
     supportedVoices: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'],
-    defaultVoice: 'alloy',
-    maxTokens: 4096,
-    supportedLanguages: ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ja', 'ko', 'zh']
+    defaultVoice: 'alloy'
   });
 });
 

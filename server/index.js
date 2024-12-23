@@ -20,26 +20,38 @@ app.use(cors());
 // Parse JSON request bodies
 app.use(express.json());
 
-// Serve static files from the client directory
-app.use(express.static(join(__dirname, '../client')));
+// Configure static file serving with proper MIME types
+app.use(express.static(join(__dirname, '../client'), {
+    setHeaders: (res, path) => {
+        // Set proper MIME types for JavaScript modules
+        if (path.endsWith('.js')) {
+            res.setHeader('Content-Type', 'application/javascript');
+        }
+    }
+}));
 
 // Mount the sessions router
 app.use('/api', sessionsRouter);
 
+// Basic route for checking server status
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(err.status || 500).json({
-    error: {
-      message: err.message || 'Internal server error',
-      ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-    }
-  });
+    console.error('Error:', err);
+    res.status(err.status || 500).json({
+        error: {
+            message: err.message || 'Internal server error',
+            ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+        }
+    });
 });
 
 // Start the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-  console.log('Environment:', process.env.NODE_ENV || 'development');
+    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log('Environment:', process.env.NODE_ENV || 'development');
 });
