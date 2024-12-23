@@ -1,4 +1,6 @@
-# Realtime Notes
+{
+  `path`: `C:\\GIT\\realtime-notes\\README.md`,
+  `content`: `# Realtime Notes
 
 Realtime Notes is a sophisticated web application that provides real-time audio transcription and summarization using OpenAI's Realtime API. The application captures both microphone and browser audio, delivering instant transcriptions and intelligent summaries of spoken content.
 
@@ -130,4 +132,5 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.`
+}
