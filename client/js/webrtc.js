@@ -90,6 +90,16 @@ function handleRealtimeEvent(event, callbacks) {
     console.log('Processing event:', event.type);
 
     switch (event.type) {
+        case 'response.audio_transcript.done':
+            if (event.transcript) {
+                callbacks.onTranscript({
+                    text: event.transcript,
+                    isPartial: false,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            break;
+
         case 'conversation.item.created':
             if (event.item?.content) {
                 const text = extractTextFromContent(event.item.content);
