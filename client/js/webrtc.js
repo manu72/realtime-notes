@@ -1,43 +1,29 @@
-// webrtc.js - WebRTC connection management and audio streaming
+import { audioManager } from './audio.js';
+
 let peerConnection = null;
 let dataChannel = null;
 
-export async function initWebRTC(token, callbacks) {
+export { initWebRTC, closeConnection };
+
+async function initWebRTC(token, callbacks) {
     try {
-        // Create and configure the peer connection
-        peerConnection = new RTCPeerConnection();
-        
-        // Create a data channel for sending and receiving events
+        peerConnection = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+
+        console.log('Creating data channel...');
         dataChannel = peerConnection.createDataChannel('oai-events');
         setupDataChannelHandlers(dataChannel, callbacks);
 
-        // Set up audio handling
-        const audioStream = await navigator.mediaDevices.getUserMedia({ 
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            }
-        });
-
-        // Add audio track to the peer connection
+        const audioStream = await audioManager.startAudioCapture();
         audioStream.getAudioTracks().forEach(track => {
             peerConnection.addTrack(track, audioStream);
         });
 
-        // Set up remote audio playback
-        const audioElement = document.createElement('audio');
-        audioElement.autoplay = true;
-        peerConnection.ontrack = (event) => {
-            audioElement.srcObject = event.streams[0];
-        };
-
-        // Create and set local description
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
 
-        // Send the offer to OpenAI's Realtime API
-        const sdpResponse = await fetch(
+        const response = await fetch(
             'https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17',
             {
                 method: 'POST',
@@ -49,19 +35,15 @@ export async function initWebRTC(token, callbacks) {
             }
         );
 
-        if (!sdpResponse.ok) {
+        if (!response.ok) {
             throw new Error('Failed to establish WebRTC connection');
         }
 
-        // Set the remote description
         const answer = {
             type: 'answer',
-            sdp: await sdpResponse.text()
+            sdp: await response.text()
         };
         await peerConnection.setRemoteDescription(answer);
-
-        // Send initial configuration
-        sendConfiguration();
 
         return peerConnection;
     } catch (error) {
@@ -70,15 +52,32 @@ export async function initWebRTC(token, callbacks) {
     }
 }
 
+async function closeConnection() {
+    if (dataChannel) {
+        dataChannel.close();
+        dataChannel = null;
+    }
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+    await audioManager.stopAudioCapture();
+}
+
 function setupDataChannelHandlers(channel, callbacks) {
     channel.onopen = () => {
         console.log('Data channel opened');
-        callbacks.onStatusChange('Connected');
+        sendConfiguration(channel);
     };
 
     channel.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        handleRealtimeEvent(data, callbacks);
+        try {
+            const data = JSON.parse(event.data);
+            console.log('Raw event:', JSON.stringify(data, null, 2));
+            handleRealtimeEvent(data, callbacks);
+        } catch (error) {
+            console.error('Error handling message:', error);
+        }
     };
 
     channel.onclose = () => {
@@ -88,40 +87,61 @@ function setupDataChannelHandlers(channel, callbacks) {
 }
 
 function handleRealtimeEvent(event, callbacks) {
+    console.log('Processing event:', event.type);
+
     switch (event.type) {
-        case 'transcript.partial':
-        case 'transcript.complete':
-            callbacks.onTranscript(event.transcript.text);
+        case 'conversation.item.created':
+            if (event.item?.content) {
+                const text = extractTextFromContent(event.item.content);
+                if (text) {
+                    if (text.toLowerCase().includes('summary:')) {
+                        callbacks.onSummary({
+                            text: text,
+                            timestamp: new Date().toISOString()
+                        });
+                    } else {
+                        callbacks.onTranscript({
+                            text: text,
+                            isPartial: false,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                }
+            }
             break;
-        case 'summary.update':
-            callbacks.onSummary(event.summary.text);
+
+        case 'input_audio_buffer.speech_started':
+            console.log('Speech detected - audio input working');
             break;
-        default:
-            console.log('Received event:', event);
+
+        case 'input_audio_buffer.speech_stopped':
+            console.log('Speech stopped');
+            break;
     }
 }
 
-function sendConfiguration() {
-    if (!dataChannel) return;
+function extractTextFromContent(content) {
+    if (!Array.isArray(content)) return null;
+    
+    for (const item of content) {
+        if (item.type === 'text' && item.text) {
+            return item.text;
+        }
+        if (item.type === 'message' && item.content) {
+            return extractTextFromContent(item.content);
+        }
+    }
+    return null;
+}
 
+function sendConfiguration(channel) {
     const config = {
         type: 'response.create',
         response: {
             modalities: ['text', 'audio'],
-            instructions: 'Please transcribe the audio and provide periodic summaries of the key points discussed.',
+            instructions: 'Please transcribe the audio and provide periodic summaries.',
+            stream: true
         }
     };
-
-    dataChannel.send(JSON.stringify(config));
-}
-
-export async function closeConnection() {
-    if (dataChannel) {
-        dataChannel.close();
-        dataChannel = null;
-    }
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
+    channel.send(JSON.stringify(config));
 }
