@@ -33,46 +33,46 @@ export function initUI(handlers) {
 
 export function updateTranscription(transcriptData) {
     if (!transcriptionBox) return;
-    console.log('Updating transcription:', transcriptData);
     
-    const p = document.createElement('p');
-    p.className = `transcription-entry ${transcriptData.isUser ? 'user' : 'assistant'}`;
-    
-    const prefix = transcriptData.isUser ? 'You: ' : 'Assistant: ';
-    p.textContent = prefix + transcriptData.text;
-    
-    if (!transcriptData.isPartial) {
-        const timeElement = document.createElement('small');
-        timeElement.className = 'timestamp';
-        timeElement.textContent = new Date(transcriptData.timestamp).toLocaleTimeString();
-        p.appendChild(timeElement);
-    }
-    
+    let existingEntry = null;
     if (transcriptData.isPartial) {
-        p.classList.add('partial');
-        const existingPartial = transcriptionBox.querySelector('.partial');
-        if (existingPartial) {
-            existingPartial.remove();
+        existingEntry = transcriptionBox.querySelector('.partial');
+        if (existingEntry) {
+            existingEntry.textContent = `${transcriptData.isUser ? 'You' : 'Assistant'}: ${transcriptData.text}`;
+            return;
         }
     }
     
-    transcriptionBox.appendChild(p);
+    const entry = document.createElement('p');
+    entry.className = `transcription-entry ${transcriptData.isUser ? 'user' : 'assistant'}`;
+    if (transcriptData.isPartial) {
+        entry.className += ' partial';
+    }
+    
+    entry.textContent = `${transcriptData.isUser ? 'You' : 'Assistant'}: ${transcriptData.text}`;
+    
+    const time = document.createElement('small');
+    time.className = 'timestamp';
+    time.textContent = new Date(transcriptData.timestamp).toLocaleTimeString();
+    entry.appendChild(time);
+    
+    transcriptionBox.appendChild(entry);
     transcriptionBox.scrollTop = transcriptionBox.scrollHeight;
 }
 
 export function updateSummary(summaryData) {
     if (!summaryBox) return;
     
-    const div = document.createElement('div');
-    div.className = 'summary-entry';
-    div.textContent = summaryData.text;
+    const entry = document.createElement('div');
+    entry.className = 'summary-entry';
+    entry.textContent = summaryData.text;
     
-    const timeElement = document.createElement('small');
-    timeElement.className = 'timestamp';
-    timeElement.textContent = new Date(summaryData.timestamp).toLocaleTimeString();
-    div.appendChild(timeElement);
+    const time = document.createElement('small');
+    time.className = 'timestamp';
+    time.textContent = new Date(summaryData.timestamp).toLocaleTimeString();
+    entry.appendChild(time);
     
-    summaryBox.appendChild(div);
+    summaryBox.appendChild(entry);
 }
 
 export function updateStatus(status) {
@@ -82,7 +82,7 @@ export function updateStatus(status) {
     connectionStatus.className = 'status-text ' + 
         (status.toLowerCase().includes('connect') ? 'connected' : 'disconnected');
     
-    if (status.toLowerCase().includes('speech')) {
+    if (status.toLowerCase().includes('speaking')) {
         updateAudioStatus(true);
     } else if (status.toLowerCase().includes('disconnect')) {
         updateAudioStatus(false);
