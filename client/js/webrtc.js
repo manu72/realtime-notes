@@ -24,7 +24,7 @@ async function initWebRTC(token, callbacks) {
         await peerConnection.setLocalDescription(offer);
 
         const response = await fetch(
-            'https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17',
+            'https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17&input_audio_transcription=true',
             {
                 method: 'POST',
                 headers: {
