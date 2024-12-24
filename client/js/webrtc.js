@@ -179,7 +179,8 @@ function sendConfiguration(channel) {
         response: {
             modalities: ['text', 'audio'],
             instructions: 'Please transcribe the audio and provide periodic summaries.',
-            stream: true
+            stream: true,
+            input_audio_transcription: true
         }
     };
     channel.send(JSON.stringify(config));
