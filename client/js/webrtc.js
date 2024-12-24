@@ -7,61 +7,30 @@ export { initWebRTC, closeConnection };
 
 async function initWebRTC(token, callbacks) {
     try {
-        const configuration = {
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-            // Add audio processing configuration
-            sdpSemantics: 'unified-plan',
-            // Enable audio processing
-            encodedInsertableStreams: true
-        };
-
-        peerConnection = new RTCPeerConnection(configuration);
-
-        console.log('Creating data channel...');
-        dataChannel = peerConnection.createDataChannel('oai-events', {
-            ordered: true
+        peerConnection = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         });
+
+        dataChannel = peerConnection.createDataChannel('oai-events');
         setupDataChannelHandlers(dataChannel, callbacks);
 
-        // Initialize and add audio track with specific constraints
         const audioStream = await audioManager.startAudioCapture();
         audioStream.getAudioTracks().forEach(track => {
-            const sender = peerConnection.addTrack(track, audioStream);
-            // Set encoding parameters for better audio quality
-            const params = sender.getParameters();
-            params.encodings = [{
-                maxBitrate: 128000,
-                priority: 'high',
-                networkPriority: 'high'
-            }];
-            sender.setParameters(params);
+            peerConnection.addTrack(track, audioStream);
         });
 
-        // Add audio level monitoring
-        const audioContext = new AudioContext();
-        const source = audioContext.createMediaStreamSource(audioStream);
-        const analyzer = audioContext.createAnalyser();
-        source.connect(analyzer);
-        monitorAudioLevels(analyzer, callbacks);
-
         const offer = await peerConnection.createOffer({
-            offerToReceiveAudio: true,
-            voiceActivityDetection: true
+            offerToReceiveAudio: true
         });
         await peerConnection.setLocalDescription(offer);
 
         const response = await fetch(
-            'https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17&input_audio_transcription=true&audio_quality=high',
+            'https://api.openai.com/v1/realtime',
             {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/sdp',
-                    'X-Audio-Config': JSON.stringify({
-                        sampleRate: 48000,
-                        channels: 1,
-                        format: 'opus'
-                    })
+                    'Content-Type': 'application/sdp'
                 },
                 body: offer.sdp
             }
@@ -77,29 +46,11 @@ async function initWebRTC(token, callbacks) {
         };
         await peerConnection.setRemoteDescription(answer);
 
-        // Add connection state monitoring
-        peerConnection.onconnectionstatechange = () => {
-            callbacks.onStatusChange(`Connection state: ${peerConnection.connectionState}`);
-        };
-
         return peerConnection;
     } catch (error) {
         console.error('WebRTC initialization failed:', error);
         throw error;
     }
-}
-
-function monitorAudioLevels(analyzer, callbacks) {
-    const dataArray = new Uint8Array(analyzer.frequencyBinCount);
-    function checkLevel() {
-        analyzer.getByteFrequencyData(dataArray);
-        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        if (average > 0) {
-            callbacks.onAudioLevel?.(average);
-        }
-        requestAnimationFrame(checkLevel);
-    }
-    checkLevel();
 }
 
 async function closeConnection() {
@@ -123,11 +74,10 @@ function setupDataChannelHandlers(channel, callbacks) {
     channel.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
-            console.log('Raw event:', JSON.stringify(data, null, 2));
+            console.log('Received event:', data);
             handleRealtimeEvent(data, callbacks);
         } catch (error) {
             console.error('Error handling message:', error);
-            callbacks.onError?.(error);
         }
     };
 
@@ -135,144 +85,57 @@ function setupDataChannelHandlers(channel, callbacks) {
         console.log('Data channel closed');
         callbacks.onStatusChange('Disconnected');
     };
-
-    channel.onerror = (error) => {
-        console.error('Data channel error:', error);
-        callbacks.onError?.(error);
-    };
 }
 
 function handleRealtimeEvent(event, callbacks) {
-    console.log('Processing event:', event.type);
+    console.log('Processing event type:', event.type);
 
     switch (event.type) {
-        case 'input_audio_buffer.transcription.partial':
-            if (event.transcript) {
-                callbacks.onTranscript({
-                    text: event.transcript,
-                    isPartial: true,
-                    timestamp: new Date().toISOString(),
-                    isUser: true
-                });
-            }
-            break;
-
-        case 'input_audio_buffer.transcription.final':
-            if (event.transcript) {
-                callbacks.onTranscript({
-                    text: event.transcript,
-                    isPartial: false,
-                    timestamp: new Date().toISOString(),
-                    isUser: true
-                });
-            }
-            break;
-
-        case 'input_audio_buffer.speech_started':
-            console.log('Speech detected - audio input working');
-            callbacks.onStatusChange('Speaking detected');
-            break;
-
-        case 'input_audio_buffer.speech_stopped':
-            console.log('Speech stopped');
-            callbacks.onStatusChange('Speech stopped');
-            break;
-
-        case 'input_audio_buffer.committed':
-            if (event.transcript) {
-                callbacks.onTranscript({
-                    text: event.transcript,
-                    isPartial: false,
-                    timestamp: new Date().toISOString(),
-                    isUser: true
-                });
-            }
-            break;
-
         case 'conversation.item.created':
-            if (event.item?.content) {
-                const text = extractTextFromContent(event.item.content);
-                if (text) {
-                    if (text.toLowerCase().includes('summary:')) {
-                        callbacks.onSummary({
-                            text: text,
-                            timestamp: new Date().toISOString()
-                        });
-                    } else {
+            if (event.item?.role === 'user' && event.item?.content) {
+                // Handle user message content
+                for (const contentItem of event.item.content) {
+                    if (contentItem.type === 'text' && contentItem.text) {
                         callbacks.onTranscript({
-                            text: text,
+                            text: contentItem.text,
                             isPartial: false,
                             timestamp: new Date().toISOString(),
-                            isUser: event.item.role === 'user'
+                            isUser: true
+                        });
+                    }
+                }
+            } else if (event.item?.role === 'assistant' && event.item?.content) {
+                // Handle assistant response
+                for (const contentItem of event.item.content) {
+                    if (contentItem.type === 'text' && contentItem.text) {
+                        callbacks.onTranscript({
+                            text: contentItem.text,
+                            isPartial: false,
+                            timestamp: new Date().toISOString(),
+                            isUser: false
                         });
                     }
                 }
             }
             break;
 
-        case 'error':
-            console.error('Received error event:', event);
-            callbacks.onError?.(new Error(event.message || 'Unknown error'));
+        case 'response.audio_transcript.done':
+            callbacks.onTranscript({
+                text: event.transcript,
+                isPartial: false,
+                timestamp: new Date().toISOString(),
+                isUser: false
+            });
             break;
-        case 'input_audio_buffer.speech_started':
-            console.log('Speech detected - audio input working');
-            break;
-
-        case 'input_audio_buffer.speech_stopped':
-            console.log('Speech stopped');
-            break;
-
-        case 'input_audio_buffer.committed':
-            if (event.transcript) {
-                callbacks.onTranscript({
-                    text: event.transcript,
-                    isPartial: false,
-                    timestamp: new Date().toISOString(),
-                    isUser: true
-                });
-            }
-            break;
-        default:
-            console.log('Unhandled event type:', event.type);
     }
-}
-
-function extractTextFromContent(content) {
-    if (!Array.isArray(content)) return null;
-    
-    for (const item of content) {
-        if (item.type === 'text' && item.text) {
-            return item.text;
-        }
-        if (item.type === 'message' && item.content) {
-            return extractTextFromContent(item.content);
-        }
-        if (item.type === 'input_audio' && item.transcript) {
-            return item.transcript;
-        }
-    }
-    return null;
 }
 
 function sendConfiguration(channel) {
     const config = {
         type: 'response.create',
         response: {
-            modalities: ['text', 'audio'],
-            instructions: 'Please transcribe the audio and provide periodic summaries.',
-            stream: true,
-            input_audio_transcription: {
-                enabled: true,
-                model: 'whisper-1',
-                language: 'en',
-                prompt: 'Transcribe the following audio accurately',
-                response_format: 'text'
-            },
-            audio_output: {
-                format: 'opus',
-                sampleRate: 48000,
-                channels: 1
-            }
+            modalities: ['text'],
+            instructions: 'Please transcribe all audio input and provide summaries periodically.'
         }
     };
     channel.send(JSON.stringify(config));

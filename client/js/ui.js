@@ -4,7 +4,6 @@ let transcriptionBox;
 let summaryBox;
 let connectionStatus;
 let audioStatus;
-let currentPartialTranscription = null;
 
 export function initUI(handlers) {
     startButton = document.getElementById('startButton');
@@ -37,13 +36,25 @@ export function updateTranscription(transcriptData) {
     console.log('Updating transcription:', transcriptData);
     
     const p = document.createElement('p');
-    p.className = 'transcription-entry';
-    p.textContent = transcriptData.text;
+    p.className = `transcription-entry ${transcriptData.isUser ? 'user' : 'assistant'}`;
     
-    const timeElement = document.createElement('small');
-    timeElement.className = 'timestamp';
-    timeElement.textContent = new Date(transcriptData.timestamp).toLocaleTimeString();
-    p.appendChild(timeElement);
+    const prefix = transcriptData.isUser ? 'You: ' : 'Assistant: ';
+    p.textContent = prefix + transcriptData.text;
+    
+    if (!transcriptData.isPartial) {
+        const timeElement = document.createElement('small');
+        timeElement.className = 'timestamp';
+        timeElement.textContent = new Date(transcriptData.timestamp).toLocaleTimeString();
+        p.appendChild(timeElement);
+    }
+    
+    if (transcriptData.isPartial) {
+        p.classList.add('partial');
+        const existingPartial = transcriptionBox.querySelector('.partial');
+        if (existingPartial) {
+            existingPartial.remove();
+        }
+    }
     
     transcriptionBox.appendChild(p);
     transcriptionBox.scrollTop = transcriptionBox.scrollHeight;
@@ -51,7 +62,6 @@ export function updateTranscription(transcriptData) {
 
 export function updateSummary(summaryData) {
     if (!summaryBox) return;
-    console.log('Updating summary:', summaryData);
     
     const div = document.createElement('div');
     div.className = 'summary-entry';
@@ -62,18 +72,21 @@ export function updateSummary(summaryData) {
     timeElement.textContent = new Date(summaryData.timestamp).toLocaleTimeString();
     div.appendChild(timeElement);
     
-    summaryBox.innerHTML = '';
     summaryBox.appendChild(div);
 }
 
 export function updateStatus(status) {
     if (!connectionStatus || !audioStatus) return;
     
-    connectionStatus.textContent = status;
+    connectionStatus.textContent = `Connection state: ${status}`;
     connectionStatus.className = 'status-text ' + 
-        (status.toLowerCase() === 'connected' ? 'connected' : 'disconnected');
+        (status.toLowerCase().includes('connect') ? 'connected' : 'disconnected');
     
-    updateAudioStatus(status.toLowerCase() === 'connected');
+    if (status.toLowerCase().includes('speech')) {
+        updateAudioStatus(true);
+    } else if (status.toLowerCase().includes('disconnect')) {
+        updateAudioStatus(false);
+    }
 }
 
 function updateAudioStatus(isActive) {
