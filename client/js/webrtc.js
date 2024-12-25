@@ -1,7 +1,9 @@
 import { audioManager } from './audio.js';
+import { TranscriptManager } from './transcript-manager.js';
 
 let peerConnection = null;
 let dataChannel = null;
+const transcriptManager = new TranscriptManager();
 
 export { initWebRTC, closeConnection };
 
@@ -52,11 +54,37 @@ async function initWebRTC(token, callbacks) {
         };
         await peerConnection.setRemoteDescription(answer);
 
+        // Initialize transcript manager with a unique session ID
+        transcriptManager.initialize(crypto.randomUUID());
+        setupTranscriptDownload();
+
         return peerConnection;
     } catch (error) {
         console.error('WebRTC initialization failed:', error);
         throw error;
     }
+}
+
+function setupTranscriptDownload() {
+    const downloadButton = document.getElementById('downloadButton');
+    
+    downloadButton.addEventListener('click', async () => {
+        if (transcriptManager.currentTranscript.length === 0) {
+            alert('No transcript available to download');
+            return;
+        }
+
+        try {
+            downloadButton.disabled = true;
+            const transcriptId = await transcriptManager.saveTranscript();
+            await transcriptManager.downloadTranscript(transcriptId);
+        } catch (error) {
+            console.error('Error downloading transcript:', error);
+            alert('Failed to download transcript. Please try again.');
+        } finally {
+            downloadButton.disabled = transcriptManager.currentTranscript.length === 0;
+        }
+    });
 }
 
 async function closeConnection() {
@@ -69,6 +97,9 @@ async function closeConnection() {
         peerConnection = null;
     }
     await audioManager.stopAudioCapture();
+    
+    // Reset transcript manager and disable download button
+    transcriptManager.initialize(null);
 }
 
 function setupDataChannelHandlers(channel, callbacks) {
@@ -107,24 +138,28 @@ function handleRealtimeEvent(event, callbacks) {
             if (event.item?.content) {
                 const text = extractTextFromContent(event.item.content);
                 if (text) {
-                    callbacks.onTranscript({
+                    const transcriptData = {
                         text: text,
                         isPartial: false,
                         timestamp: new Date().toISOString(),
                         isUser: event.item.role === 'user'
-                    });
+                    };
+                    transcriptManager.addEntry(text);
+                    callbacks.onTranscript(transcriptData);
                 }
             }
             break;
 
         case 'conversation.item.input_audio_transcription.completed':
             if (event.transcript) {
-                callbacks.onTranscript({
+                const transcriptData = {
                     text: event.transcript,
                     isPartial: false,
                     timestamp: new Date().toISOString(),
                     isUser: true
-                });
+                };
+                transcriptManager.addEntry(event.transcript);
+                callbacks.onTranscript(transcriptData);
             }
             break;
 
@@ -138,23 +173,26 @@ function handleRealtimeEvent(event, callbacks) {
 
         case 'response.audio_transcript.delta':
             if (event.delta) {
-                callbacks.onTranscript({
+                const transcriptData = {
                     text: event.delta,
                     isPartial: true,
                     timestamp: new Date().toISOString(),
                     isUser: false
-                });
+                };
+                callbacks.onTranscript(transcriptData);
             }
             break;
 
         case 'response.audio_transcript.done':
             if (event.transcript) {
-                callbacks.onTranscript({
+                const transcriptData = {
                     text: event.transcript,
                     isPartial: false,
                     timestamp: new Date().toISOString(),
                     isUser: false
-                });
+                };
+                transcriptManager.addEntry(event.transcript);
+                callbacks.onTranscript(transcriptData);
             }
             break;
 
