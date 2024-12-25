@@ -99,7 +99,8 @@ async function closeConnection() {
     }
     await audioManager.stopAudioCapture();
     currentTranscriptText = ''; // Reset the accumulated text
-    transcriptManager.initialize(null);
+    
+    // No longer resetting the transcript manager - the transcript remains available for download
 }
 
 function setupDataChannelHandlers(channel, callbacks) {
