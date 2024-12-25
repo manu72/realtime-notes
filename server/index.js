@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import sessionsRouter from './routes/sessions.js';
+import transcriptsRouter from './routes/transcripts.js';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -30,8 +31,9 @@ app.use(express.static(join(__dirname, '../client'), {
     }
 }));
 
-// Mount the sessions router
+// Mount the routers
 app.use('/api', sessionsRouter);
+app.use('/api', transcriptsRouter);
 
 // Basic route for checking server status
 app.get('/health', (req, res) => {
