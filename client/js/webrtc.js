@@ -113,7 +113,7 @@ function setupDataChannelHandlers(channel, callbacks) {
         try {
             const data = JSON.parse(event.data);
             console.log('Received event:', data);
-            handleRealtimeEvent(data, callbacks);
+            handleRealtimeEvent(data, callbacks, channel);
         } catch (error) {
             console.error('Error handling message:', error);
             callbacks.onError?.(error);
@@ -131,7 +131,7 @@ function setupDataChannelHandlers(channel, callbacks) {
     };
 }
 
-function handleRealtimeEvent(event, callbacks) {
+function handleRealtimeEvent(event, callbacks, channel) {
     console.log('Processing event type:', event.type);
 
     switch (event.type) {
@@ -139,20 +139,26 @@ function handleRealtimeEvent(event, callbacks) {
             if (event.item?.content) {
                 const text = extractTextFromContent(event.item.content);
                 if (text) {
-                    const transcriptData = {
-                        text: text,
-                        isPartial: false,
-                        timestamp: new Date().toISOString(),
-                        isUser: event.item.role === 'user'
-                    };
-                    transcriptManager.addEntry(text);
-                    callbacks.onTranscript(transcriptData);
+                    // Regular transcript handling for user messages
+                    if (event.item.role === 'user') {
+                        console.log('Received user transcript:', text);
+                        const transcriptData = {
+                            text: text,
+                            isPartial: false,
+                            timestamp: new Date().toISOString(),
+                            isUser: true
+                        };
+                        transcriptManager.addEntry(text);
+                        callbacks.onTranscript(transcriptData);
+                        requestSummary(channel, transcriptManager.getCurrentTranscript());
+                    }
                 }
             }
             break;
 
         case 'conversation.item.input_audio_transcription.completed':
             if (event.transcript) {
+                console.log('Audio transcription completed:', event.transcript);
                 const transcriptData = {
                     text: event.transcript,
                     isPartial: false,
@@ -161,6 +167,36 @@ function handleRealtimeEvent(event, callbacks) {
                 };
                 transcriptManager.addEntry(event.transcript);
                 callbacks.onTranscript(transcriptData);
+                requestSummary(channel, transcriptManager.getCurrentTranscript());
+            }
+            break;
+
+        case 'response.audio_transcript.done':
+            if (currentTranscriptText) {
+                console.log('Response transcript completed:', currentTranscriptText);
+                
+                // Check if this is a summary response
+                if (currentTranscriptText.toLowerCase().includes('summary:')) {
+                    console.log('Detected summary response');
+                    const summaryData = {
+                        text: currentTranscriptText,
+                        timestamp: new Date().toISOString()
+                    };
+                    callbacks.onSummary?.(summaryData);
+                } else {
+                    // Regular assistant response
+                    const transcriptData = {
+                        text: currentTranscriptText,
+                        isPartial: false,
+                        timestamp: new Date().toISOString(),
+                        isUser: false
+                    };
+                    transcriptManager.addEntry(currentTranscriptText);
+                    callbacks.onTranscript(transcriptData);
+                    requestSummary(channel, transcriptManager.getCurrentTranscript());
+                }
+                
+                currentTranscriptText = ''; // Reset for next speech
             }
             break;
 
@@ -177,28 +213,16 @@ function handleRealtimeEvent(event, callbacks) {
             if (event.delta) {
                 // Accumulate delta text
                 currentTranscriptText += event.delta;
-                const transcriptData = {
-                    text: event.delta,
-                    isPartial: true,
-                    timestamp: new Date().toISOString(),
-                    isUser: false
-                };
-                callbacks.onTranscript(transcriptData);
-            }
-            break;
-
-        case 'response.audio_transcript.done':
-            if (currentTranscriptText) {
-                // Add the accumulated text as a transcript entry
-                const transcriptData = {
-                    text: currentTranscriptText,
-                    isPartial: false,
-                    timestamp: new Date().toISOString(),
-                    isUser: false
-                };
-                transcriptManager.addEntry(currentTranscriptText);
-                callbacks.onTranscript(transcriptData);
-                currentTranscriptText = ''; // Reset for next speech
+                // Only send to transcript if not a summary
+                if (!currentTranscriptText.toLowerCase().includes('summary:')) {
+                    const transcriptData = {
+                        text: event.delta,
+                        isPartial: true,
+                        timestamp: new Date().toISOString(),
+                        isUser: false
+                    };
+                    callbacks.onTranscript(transcriptData);
+                }
             }
             break;
 
@@ -241,3 +265,40 @@ function sendConfiguration(channel) {
     };
     channel.send(JSON.stringify(config));
 }
+
+function requestSummary(channel, transcript) {
+    if (!channel || channel.readyState !== 'open') {
+        console.log('Cannot request summary - channel not open');
+        return;
+    }
+
+    if (!transcript || transcript.trim().length === 0) {
+        console.log('Cannot request summary - no transcript available');
+        return;
+    }
+
+    console.log('Requesting summary for transcript');
+    const summaryRequest = {
+        type: 'conversation.item.create',
+        item: {
+            type: 'message',
+            role: 'user',
+            content: [{
+                type: 'input_text',
+                text: `Generate a concise summary of the following conversation. Format your response as "Summary: " followed by the key points:\n\n${transcript}`
+            }]
+        }
+    };
+
+    try {
+        channel.send(JSON.stringify(summaryRequest));
+        console.log('Summary request sent');
+    } catch (error) {
+        console.error('Error sending summary request:', error);
+    }
+}
+
+// Add getCurrentTranscript method to TranscriptManager class
+TranscriptManager.prototype.getCurrentTranscript = function() {
+    return this.currentTranscript.map(entry => entry.text).join('\n');
+};
