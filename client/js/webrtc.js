@@ -4,6 +4,7 @@ import { TranscriptManager } from './transcript-manager.js';
 let peerConnection = null;
 let dataChannel = null;
 const transcriptManager = new TranscriptManager();
+let currentTranscriptText = ''; // Store the accumulated delta text
 
 export { initWebRTC, closeConnection };
 
@@ -97,8 +98,7 @@ async function closeConnection() {
         peerConnection = null;
     }
     await audioManager.stopAudioCapture();
-    
-    // Reset transcript manager and disable download button
+    currentTranscriptText = ''; // Reset the accumulated text
     transcriptManager.initialize(null);
 }
 
@@ -165,6 +165,7 @@ function handleRealtimeEvent(event, callbacks) {
 
         case 'input_audio_buffer.speech_started':
             callbacks.onStatusChange('Speaking detected');
+            currentTranscriptText = ''; // Reset accumulated text when speech starts
             break;
 
         case 'input_audio_buffer.speech_stopped':
@@ -173,6 +174,8 @@ function handleRealtimeEvent(event, callbacks) {
 
         case 'response.audio_transcript.delta':
             if (event.delta) {
+                // Accumulate delta text
+                currentTranscriptText += event.delta;
                 const transcriptData = {
                     text: event.delta,
                     isPartial: true,
@@ -184,15 +187,17 @@ function handleRealtimeEvent(event, callbacks) {
             break;
 
         case 'response.audio_transcript.done':
-            if (event.transcript) {
+            if (currentTranscriptText) {
+                // Add the accumulated text as a transcript entry
                 const transcriptData = {
-                    text: event.transcript,
+                    text: currentTranscriptText,
                     isPartial: false,
                     timestamp: new Date().toISOString(),
                     isUser: false
                 };
-                transcriptManager.addEntry(event.transcript);
+                transcriptManager.addEntry(currentTranscriptText);
                 callbacks.onTranscript(transcriptData);
+                currentTranscriptText = ''; // Reset for next speech
             }
             break;
 
