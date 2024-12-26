@@ -5,6 +5,7 @@ let peerConnection = null;
 let dataChannel = null;
 const transcriptManager = new TranscriptManager();
 let currentTranscriptText = ''; // Store the accumulated delta text
+let summaryLimitReached = false;
 
 export { initWebRTC, closeConnection };
 
@@ -178,13 +179,29 @@ function handleRealtimeEvent(event, callbacks, channel) {
             }
             break;
 
+        case 'response.done':
+            if (event.response?.status === 'failed') {
+                console.error('Response failed:', event.response);
+                
+                // Check if it's a rate limit error
+                const error = event.response.status_details?.error;
+                if (error?.code === 'rate_limit_exceeded') {
+                    // Show user-friendly error message
+                    callbacks.onError?.('API rate limit reached. Summaries are temporarily disabled, but transcription will continue.');
+                    
+                    // Set a flag to prevent further summary requests for this session
+                    summaryLimitReached = true;
+                }
+            }
+            break;
+
         case 'response.audio_transcript.done':
             if (currentTranscriptText) {
-                console.log('Response transcript completed:', currentTranscriptText);
+                console.log('Processing completed transcript:', currentTranscriptText);
                 
                 // Check if this is a summary response
                 if (currentTranscriptText.toLowerCase().includes('summary:')) {
-                    console.log('Detected summary response');
+                    console.log('Processing summary response');
                     const summaryData = {
                         text: currentTranscriptText,
                         timestamp: new Date().toISOString()
@@ -200,7 +217,12 @@ function handleRealtimeEvent(event, callbacks, channel) {
                     };
                     transcriptManager.addEntry(currentTranscriptText);
                     callbacks.onTranscript(transcriptData);
-                    requestSummary(channel, transcriptManager.getCurrentTranscript());
+                    
+                    // Only request summary if we haven't hit the limit
+                    if (!summaryLimitReached) {
+                        console.log('Requesting updated summary');
+                        requestSummary(channel, transcriptManager.getCurrentTranscript());
+                    }
                 }
                 
                 currentTranscriptText = ''; // Reset for next speech

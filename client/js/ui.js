@@ -4,6 +4,9 @@ let transcriptionBox;
 let summaryBox;
 let connectionStatus;
 let audioStatus;
+let errorModal;
+let errorMessage;
+let closeModalBtn;
 
 export function initUI(handlers) {
     startButton = document.getElementById('startButton');
@@ -12,6 +15,9 @@ export function initUI(handlers) {
     summaryBox = document.getElementById('summaryContent');
     connectionStatus = document.getElementById('connectionStatus');
     audioStatus = document.getElementById('audioStatus');
+    errorModal = document.getElementById('errorModal');
+    errorMessage = document.getElementById('errorMessage');
+    closeModalBtn = document.querySelector('.close-modal');
 
     stopButton.disabled = true;
 
@@ -26,6 +32,20 @@ export function initUI(handlers) {
         stopButton.disabled = true;
         await handlers.onStop();
         startButton.disabled = false;
+    });
+
+    // Add modal close handler
+    if (closeModalBtn) {
+        closeModalBtn.addEventListener('click', () => {
+            errorModal.style.display = 'none';
+        });
+    }
+
+    // Close modal when clicking outside
+    window.addEventListener('click', (event) => {
+        if (event.target === errorModal) {
+            errorModal.style.display = 'none';
+        }
     });
 
     updateStatus('Disconnected');
@@ -98,4 +118,19 @@ function updateAudioStatus(isActive) {
 function clearDisplays() {
     if (transcriptionBox) transcriptionBox.innerHTML = '';
     if (summaryBox) summaryBox.innerHTML = '';
+}
+
+export function showError(message) {
+    if (!errorModal || !errorMessage) return;
+    
+    errorMessage.textContent = message;
+    errorModal.style.display = 'block';
+    
+    // Add warning to summary box
+    if (summaryBox) {
+        const warningDiv = document.createElement('div');
+        warningDiv.className = 'summary-warning';
+        warningDiv.textContent = '⚠️ Summary temporarily unavailable due to API limits. Transcription will continue.';
+        summaryBox.appendChild(warningDiv);
+    }
 }
