@@ -89,6 +89,13 @@ function setupTranscriptDownload() {
 }
 
 async function closeConnection() {
+    // Get the summary content from the UI
+    const summaryBox = document.getElementById('summaryContent');
+    if (summaryBox && summaryBox.textContent.trim()) {
+        // Add a separator and the summary to the transcript
+        transcriptManager.addEntry('\n=== Final Summary ===\n' + summaryBox.textContent.trim());
+    }
+
     if (dataChannel) {
         dataChannel.close();
         dataChannel = null;
