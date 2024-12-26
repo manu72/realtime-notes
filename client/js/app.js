@@ -2,7 +2,7 @@
 console.log('Initializing application module...');
 
 // Import our utility modules
-import { initUI, updateStatus, updateTranscription, updateSummary } from './ui.js';
+import { initUI, updateStatus, updateTranscription, updateSummary, showError } from './ui.js';
 import { initWebRTC, closeConnection } from './webrtc.js';
 import { audioManager } from './audio.js';
 
@@ -69,11 +69,24 @@ class RealtimeNotes {
             const sessionData = await response.json();
             console.log('Session token acquired');
 
-            // Initialize WebRTC connection
+            // Initialize WebRTC connection with error handling
             this.connection = await initWebRTC(sessionData.client_secret.value, {
-                onTranscript: (text) => updateTranscription(text),
-                onSummary: (text) => updateSummary(text),
-                onStatusChange: (status) => updateStatus(status)
+                onTranscript: (data) => {
+                    console.log('Transcript received:', data);
+                    updateTranscription(data);
+                },
+                onSummary: (data) => {
+                    console.log('Summary received:', data);
+                    updateSummary(data);
+                },
+                onStatusChange: (status) => {
+                    console.log('Status change:', status);
+                    updateStatus(status);
+                },
+                onError: (message) => {
+                    console.error('WebRTC error:', message);
+                    showError(message);
+                }
             });
 
             this.isRecording = true;
