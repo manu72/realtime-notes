@@ -1,4 +1,4 @@
-# Realtime Notes
+# Realtime Notes POC
 
 A real-time speech-to-text application with live transcription and automatic summarization capabilities. The app captures audio input, provides instant transcription, and generates concise summaries of the conversation.
 
